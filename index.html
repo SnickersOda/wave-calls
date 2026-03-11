@@ -236,6 +236,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       </div>
       <div class="sidebar-actions">
         <button class="icon-btn" onclick="showAddContact()" title="Добавить контакт">＋</button>
+        <button class="icon-btn" onclick="logout()" title="Выйти из аккаунта" style="color:var(--danger);border-color:rgba(255,82,82,0.2)">⏻</button>
       </div>
     </div>
     <div class="search-bar">
@@ -856,7 +857,13 @@ function showBrowserNotif(name, text) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function copyMyId() {
+function logout() {
+  if (!confirm('Выйти из аккаунта?')) return;
+  try { localStorage.removeItem('wave_user'); localStorage.removeItem('wave_avatar_img'); } catch(e) {}
+  if (socket) socket.disconnect();
+  if (peer) try { peer.destroy(); } catch(e) {}
+  location.reload();
+}
   if (!me) return;
   navigator.clipboard.writeText(me.id).then(() => {
     const el = document.getElementById('my-id-el');
