@@ -1,12 +1,15 @@
 {
-  "name": "wave-calls",
-  "version": "1.0.0",
+  "name": "wave-messenger",
+  "version": "2.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "peer": "^0.6.1"
+    "peer": "^0.6.1",
+    "socket.io": "^4.7.4",
+    "better-sqlite3": "^9.4.3",
+    "uuid": "^9.0.0"
   }
 }
