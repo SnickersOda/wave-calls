@@ -49,6 +49,7 @@ async function initDB() {
       reply_to TEXT,
       reactions TEXT DEFAULT '{}',
       deleted INTEGER DEFAULT 0,
+      forwarded INTEGER DEFAULT 0,
       read INTEGER DEFAULT 0,
       created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())
     );
@@ -56,6 +57,7 @@ async function initDB() {
     CREATE INDEX IF NOT EXISTS idx_msg_pair ON messages(from_id, to_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_id, read);
   `);
+  await db.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded INTEGER DEFAULT 0`);
   console.log('DB ready');
 }
 
@@ -190,7 +192,7 @@ io.on('connection', socket => {
     } catch(e) {}
   });
 
-  socket.on('message', async ({ toId, text, type='text', fileName, fileSize, fileData, replyTo }) => {
+  socket.on('message', async ({ toId, text, type='text', fileName, fileSize, fileData, replyTo, forwarded }) => {
     if (!socket.userId || !toId) return;
     if (!text && !fileData) return;
     const msg = {
@@ -203,6 +205,7 @@ io.on('connection', socket => {
       file_size: fileSize || null,
       file_data: fileData || null,
       reply_to: replyTo || null,
+      forwarded: forwarded ? 1 : 0,
       reactions: '{}',
       deleted: 0,
       read: 0,
@@ -210,10 +213,10 @@ io.on('connection', socket => {
     };
     try {
       await db.query(
-        `INSERT INTO messages (id,from_id,to_id,text,type,file_name,file_size,file_data,reply_to,reactions,deleted,read,created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        `INSERT INTO messages (id,from_id,to_id,text,type,file_name,file_size,file_data,reply_to,reactions,deleted,forwarded,read,created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [msg.id,msg.from_id,msg.to_id,msg.text,msg.type,msg.file_name,msg.file_size,
-         msg.file_data,msg.reply_to,msg.reactions,msg.deleted,msg.read,msg.created_at]
+         msg.file_data,msg.reply_to,msg.reactions,msg.deleted,msg.forwarded,msg.read,msg.created_at]
       );
     } catch(e) { console.error('msg insert', e); return; }
     const out = { ...msg, reactions: {} };
