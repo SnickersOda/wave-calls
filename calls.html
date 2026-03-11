@@ -663,13 +663,17 @@ let incomingIsVideo = false;
 let serverIndex = 0;
 let myId = null;
 
-// ── Server list (tried in order) ─────────────────────────────────────────────
+// ── Server list — свой сервер первым, остальные как fallback ─────────────────
+const ownHost = window.location.hostname;
+const ownPort = window.location.port ? parseInt(window.location.port) : (window.location.protocol === 'https:' ? 443 : 80);
+const ownSecure = window.location.protocol === 'https:';
+
 const SERVERS = [
-  // PeerJS серверы — пробуем по очереди
+  // Свой сервер на Railway — самый надёжный
+  { host: ownHost, port: ownPort, path: '/peerjs', secure: ownSecure },
+  // Резервные публичные
   { host: '0.peerjs.com', port: 443, path: '/', secure: true },
   { host: 'peerjs.92k.de', port: 443, path: '/', secure: true },
-  // Европейские серверы — обычно доступны из РФ
-  { host: 'peer.pm', port: 999, path: '/', secure: true },
 ];
 
 const ICE = {
