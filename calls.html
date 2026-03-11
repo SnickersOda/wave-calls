@@ -373,7 +373,9 @@ function tryConnect(idx) {
     playRingtone();
   });
 
-  peer.on('connection', (conn) => setupDataConn(conn));
+  peer.on('connection', (conn) => {
+    conn.on('open', () => setupDataConn(conn));
+  });
 }
 
 function showServerWarning() { document.getElementById('server-warning').style.display = 'flex'; }
@@ -398,11 +400,13 @@ function setupDataConn(conn) {
     }
   });
   conn.on('close', () => { dataConn = null; });
+  conn.on('error', (e) => { console.warn('dataConn error', e); dataConn = null; });
 }
 
 function openDataConn(targetId) {
   const conn = peer.connect(targetId, { reliable: true });
-  setupDataConn(conn);
+  conn.on('open', () => setupDataConn(conn));
+  conn.on('error', (e) => console.warn('data conn error', e));
 }
 
 // ── Calls ─────────────────────────────────────────────────────────────────────
