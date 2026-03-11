@@ -205,17 +205,15 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
       <label class="login-label">твоё имя</label>
       <input class="login-input" id="login-name" type="text" placeholder="например: Александр" maxlength="20" />
       <label class="login-label">аватар</label>
-      <div class="avatars" id="avatar-picker">
-        <button class="av-btn selected" data-av="👤">👤</button>
-        <button class="av-btn" data-av="🦊">🦊</button>
-        <button class="av-btn" data-av="🐺">🐺</button>
-        <button class="av-btn" data-av="🦁">🦁</button>
-        <button class="av-btn" data-av="🐯">🐯</button>
-        <button class="av-btn" data-av="🐻">🐻</button>
-        <button class="av-btn" data-av="🦝">🦝</button>
-        <button class="av-btn" data-av="🐸">🐸</button>
-        <button class="av-btn" data-av="👽">👽</button>
-        <button class="av-btn" data-av="🤖">🤖</button>
+      <div style="display:flex;justify-content:center;margin-bottom:16px">
+        <input type="file" id="login-avatar-file" accept="image/*" style="display:none" onchange="handleLoginAvatarUpload(event)" />
+        <div id="avatar-upload-circle" onclick="document.getElementById('login-avatar-file').click()" style="width:90px;height:90px;border-radius:50%;border:2px dashed rgba(127,255,178,0.4);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:var(--surface2);position:relative;overflow:hidden;transition:border 0.25s,box-shadow 0.25s,background 0.25s"
+          onmouseover="this.style.border='2px solid var(--accent)';this.style.boxShadow='0 0 16px rgba(127,255,178,0.35), 0 0 32px rgba(127,255,178,0.15)';this.style.background='rgba(127,255,178,0.07)'"
+          onmouseout="if(!window.selectedAvatarImg){this.style.border='2px dashed rgba(127,255,178,0.4)';this.style.boxShadow='none';this.style.background='var(--surface2)'}">
+          <span id="avatar-circle-icon" style="font-size:26px;transition:transform 0.2s">📷</span>
+          <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px;letter-spacing:1px" id="avatar-circle-label">фото</span>
+          <img id="login-avatar-img" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%" />
+        </div>
       </div>
       <button class="login-btn" onclick="login()">Войти →</button>
       <div class="login-hint">Имя — твой логин. Одно имя = один аккаунт.<br><span>Твой ID появится после входа</span></div>
@@ -357,13 +355,40 @@ let foundUser = null;
 
 // ── Avatar picker ─────────────────────────────────────────────────────────────
 let selectedAvatar = '👤';
-document.getElementById('avatar-picker').addEventListener('click', e => {
-  const btn = e.target.closest('.av-btn');
-  if (!btn) return;
-  document.querySelectorAll('.av-btn').forEach(b => b.classList.remove('selected'));
-  btn.classList.add('selected');
-  selectedAvatar = btn.dataset.av;
-});
+let selectedAvatarImg = null;
+
+function handleLoginAvatarUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Файл слишком большой (макс. 5MB)'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    selectedAvatarImg = ev.target.result;
+    window.selectedAvatarImg = selectedAvatarImg;
+    const img = document.getElementById('login-avatar-img');
+    img.src = selectedAvatarImg;
+    img.style.display = 'block';
+    document.getElementById('avatar-circle-icon').style.display = 'none';
+    document.getElementById('avatar-circle-label').style.display = 'none';
+    const circle = document.getElementById('avatar-upload-circle');
+    circle.style.border = '2px solid var(--accent)';
+    circle.style.boxShadow = '0 0 16px rgba(127,255,178,0.35), 0 0 32px rgba(127,255,178,0.15)';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearLoginAvatar() {
+  selectedAvatarImg = null;
+  window.selectedAvatarImg = null;
+  document.getElementById('login-avatar-img').style.display = 'none';
+  document.getElementById('avatar-circle-icon').style.display = 'block';
+  document.getElementById('avatar-circle-label').style.display = 'block';
+  const circle = document.getElementById('avatar-upload-circle');
+  circle.style.border = '2px dashed rgba(127,255,178,0.4)';
+  circle.style.boxShadow = 'none';
+  circle.style.background = 'var(--surface2)';
+  document.getElementById('login-avatar-file').value = '';
+}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 async function login() {
@@ -380,6 +405,9 @@ async function login() {
     if (!res.ok) { toast(user.error || 'Ошибка'); return; }
 
     me = user;
+    if (selectedAvatarImg) {
+      try { localStorage.setItem('wave_avatar_img', selectedAvatarImg); } catch(e) {}
+    }
     try { localStorage.setItem('wave_user', JSON.stringify(me)); } catch(e){}
     startApp();
   } catch(e) { toast('Ошибка соединения с сервером'); }
@@ -864,6 +892,8 @@ function logout() {
   if (peer) try { peer.destroy(); } catch(e) {}
   location.reload();
 }
+
+function copyMyId() {
   if (!me) return;
   navigator.clipboard.writeText(me.id).then(() => {
     const el = document.getElementById('my-id-el');
@@ -937,8 +967,15 @@ document.getElementById('add-id-input').addEventListener('keydown', e => {
     if (saved) {
       const user = JSON.parse(saved);
       document.getElementById('login-name').value = user.name;
-      const av = document.querySelector(`.av-btn[data-av="${user.avatar}"]`);
-      if (av) { document.querySelectorAll('.av-btn').forEach(b => b.classList.remove('selected')); av.classList.add('selected'); selectedAvatar = user.avatar; }
+    }
+    const savedImg = localStorage.getItem('wave_avatar_img');
+    if (savedImg) {
+      selectedAvatarImg = savedImg;
+      const img = document.getElementById('login-avatar-img');
+      img.src = savedImg; img.style.display = 'block';
+      document.getElementById('avatar-circle-icon').style.display = 'none';
+      document.getElementById('avatar-circle-label').style.display = 'none';
+      document.getElementById('avatar-upload-circle').style.border = '2px solid var(--accent)';
     }
   } catch(e){}
 })();
