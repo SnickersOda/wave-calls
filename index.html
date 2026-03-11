@@ -43,9 +43,12 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* sidebar */
 .sidebar{width:300px;min-width:300px;height:100%;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:relative}
 .sidebar-header{padding:20px 18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
-.my-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer}
+.my-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;cursor:pointer;overflow:hidden;position:relative}
+.my-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.my-avatar:hover::after{content:'📷';position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:50%}
 .my-name{font-size:15px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.my-id{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px}
+.my-id{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;cursor:pointer;transition:color 0.15s}
+.my-id:hover{color:var(--accent)}
 .sidebar-actions{display:flex;gap:6px}
 .icon-btn{width:32px;height:32px;border-radius:10px;background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
 .icon-btn:hover{background:var(--surface2);color:var(--text)}
@@ -225,14 +228,14 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
   <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <div class="my-avatar" id="my-avatar-el" title="Мой профиль">👤</div>
+      <div class="my-avatar" id="my-avatar-el" onclick="triggerAvatarUpload()" title="Сменить аватар">👤</div>
+      <input type="file" id="avatar-upload" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)" />
       <div style="flex:1;min-width:0">
         <div class="my-name" id="my-name-el">—</div>
-        <div class="my-id" id="my-id-el">ID: ——</div>
+        <div class="my-id" id="my-id-el" onclick="copyMyId()" title="Нажми чтобы скопировать">ID: ——</div>
       </div>
       <div class="sidebar-actions">
         <button class="icon-btn" onclick="showAddContact()" title="Добавить контакт">＋</button>
-        <button class="icon-btn" onclick="copyMyId()" title="Скопировать ID">⎘</button>
       </div>
     </div>
     <div class="search-bar">
@@ -388,6 +391,12 @@ async function startApp() {
   document.getElementById('my-name-el').textContent = me.name;
   document.getElementById('my-id-el').textContent = 'ID: ' + me.id;
 
+  // Load custom avatar if saved
+  try {
+    const savedImg = localStorage.getItem('wave_avatar_img');
+    if (savedImg) setAvatarImg(savedImg);
+  } catch(e) {}
+
   connectSocket();
   initPeer();
   await loadContacts();
@@ -398,21 +407,37 @@ function connectSocket() {
   socket = io();
   socket.emit('join', { userId: me.id });
 
-  socket.on('message', (msg) => {
+  socket.on('message', async (msg) => {
     if (currentChat && (msg.from_id === currentChat.id || msg.to_id === currentChat.id)) {
       appendMessage(msg);
       socket.emit('read', { fromId: msg.from_id });
     }
-    updateContactPreview(msg);
+
     if (msg.from_id !== me.id) {
-      const c = contacts.find(c => c.id === msg.from_id);
-      if (!currentChat || currentChat.id !== msg.from_id) {
-        showBrowserNotif(c ? c.name : msg.from_id, msg.text);
-        if (c) {
+      let c = contacts.find(c => c.id === msg.from_id);
+
+      // Unknown sender — fetch and add to sidebar in real time
+      if (!c) {
+        try {
+          const res = await fetch('/api/user/' + msg.from_id);
+          if (res.ok) {
+            const user = await res.json();
+            c = { ...user, online: true, unread: 0, _preview: '', _time: '' };
+            contacts.unshift(c);
+          }
+        } catch(e) {}
+      }
+
+      if (c) {
+        updateContactPreview(msg);
+        if (!currentChat || currentChat.id !== msg.from_id) {
+          showBrowserNotif(c.name, msg.text);
           c.unread = (c.unread || 0) + 1;
           renderContacts();
         }
       }
+    } else {
+      updateContactPreview(msg);
     }
   });
 
@@ -833,7 +858,37 @@ function showBrowserNotif(name, text) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function copyMyId() {
   if (!me) return;
-  navigator.clipboard.writeText(me.id).then(() => toast('ID скопирован: ' + me.id));
+  navigator.clipboard.writeText(me.id).then(() => {
+    const el = document.getElementById('my-id-el');
+    el.textContent = 'скопировано! ✓';
+    setTimeout(() => { el.textContent = 'ID: ' + me.id; }, 1500);
+  });
+}
+
+function triggerAvatarUpload() {
+  document.getElementById('avatar-upload').click();
+}
+
+function handleAvatarUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { toast('Файл слишком большой (макс. 2MB)'); return; }
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    // Save to localStorage
+    try { localStorage.setItem('wave_avatar_img', dataUrl); } catch(err) {}
+    setAvatarImg(dataUrl);
+    toast('✓ Аватар обновлён');
+  };
+  reader.readAsDataURL(file);
+}
+
+function setAvatarImg(dataUrl) {
+  const el = document.getElementById('my-avatar-el');
+  el.innerHTML = `<img src="${dataUrl}" alt="avatar" />`;
+  if (me) me._avatarImg = dataUrl;
 }
 
 function toast(msg) {
