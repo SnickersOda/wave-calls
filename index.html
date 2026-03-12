@@ -414,7 +414,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Syne',sans-serif;display:
     <label class="lbl">имя</label>
     <input class="mdinp" id="prname" type="text" placeholder="Имя" maxlength="20"/>
     <label class="lbl">@username</label>
-    <input class="mdinp" id="prun" type="text" placeholder="username" maxlength="20"/>
+    <input class="mdinp" id="prun" type="text" placeholder="Оставь пустым чтобы не менять" maxlength="20"/>
     <div class="mderr" id="proferr"></div>
     <div class="mdbtns">
       <button class="mdb sec" onclick="closeMo('profmo')">Отмена</button>
@@ -570,6 +570,7 @@ async function tryAutoLogin(){
     if(!r.ok){localStorage.removeItem('w_token');return false;}
     me=await r.json();
     if(me.avatar_img)setAV(me.id,me.avatar_img);
+    localStorage.setItem('w_me',JSON.stringify({id:me.id,name:me.name,username:me.username}));
     return true;
   }catch{return false;}
 }
@@ -814,7 +815,7 @@ function renderSB(){
     const blk=iBlocked(c.id);
     return `<div class="ci${chat?.id===c.id?' act':''}${blk?' blk':''}" onclick="openChat('${c.id}')">
       <div class="cav">${avH(c.id,c.avatar||'👤')}<div class="od${c.online&&!blk?' on':''}"></div></div>
-      <div class="cinfo"><div class="cname">${esc(c.name)}${blk?' 🚫':''}</div><div class="cprev">${esc(c._prev||('@'+(c.username||c.id)))}</div></div>
+      <div class="cinfo"><div class="cname">${esc(c.name)}${blk?' 🚫':''}</div><div class="cprev">${esc(c._prev||(c.username?'@'+c.username:''))}</div></div>
       <div class="cmeta">${c._time?`<div class="ctime">${c._time}</div>`:''}${c.unread&&!blk?`<div class="ubadge">${c.unread}</div>`:''}</div>
     </div>`;
   }).join(''):`<div class="noc">${fl?'Не найдено':'Контактов нет.<br>Нажми ＋ чтобы добавить.'}</div>`;
@@ -823,7 +824,7 @@ function renderSB(){
     srchRes.filter(u=>u.id!==me.id&&!contacts.find(c=>c.id===u.id)).map(u=>
     `<div class="ci" onclick="quickAdd('${u.id}')">
       <div class="cav">${avH(u.id,u.avatar||'👤')}</div>
-      <div class="cinfo"><div class="cname">${esc(u.name)} <span style="color:var(--ac)">＋</span></div><div class="cprev">@${esc(u.username||u.id)}</div></div>
+      <div class="cinfo"><div class="cname">${esc(u.name)} <span style="color:var(--ac)">＋</span></div><div class="cprev">${u.username?'@'+esc(u.username):''}</div></div>
     </div>`).join(''):'';
 
   list.innerHTML=favRow+gHtml+cHtml+srHtml;
@@ -1120,7 +1121,7 @@ function lookupU(val){
       foundU=u;if(u.avatar_img)setAV(u.id,u.avatar_img);
       renderAV(document.getElementById('prevav'),u.id,u.avatar||'👤');
       document.getElementById('prevname').textContent=u.name;
-      document.getElementById('prevun').textContent='@'+(u.username||u.id);
+      document.getElementById('prevun').textContent=u.username?'@'+u.username:'';
       document.getElementById('mdprev').classList.add('show');
       document.getElementById('mderr').classList.remove('show');
       document.getElementById('addok').disabled=false;
@@ -1176,7 +1177,7 @@ function showCProf(){
   const c=contacts.find(x=>x.id===chat.id)||chat;
   renderAV(document.getElementById('cprofav'),c.id,c.avatar||'👤');
   document.getElementById('cprofname').textContent=c.name;
-  document.getElementById('cprofun').textContent='@'+(c.username||c.id);
+  document.getElementById('cprofun').textContent=c.username?'@'+c.username:'';
   document.getElementById('cprofst').textContent=c.online?'🟢 онлайн':'офлайн';
   document.getElementById('blockbtn').textContent=iBlocked(c.id)?'✅ Разблокировать':'🚫 Заблокировать';
   openMo('cprofmo');
@@ -1185,21 +1186,34 @@ function callFromProf(v){closeMo('cprofmo');callC(v);}
 
 // ── MY PROFILE ────────────────────────────────────────────────────────────────
 function showProf(){
-  document.getElementById('prname').value=me.name;document.getElementById('prun').value=me.username||'';
+  document.getElementById('prname').value=me.name;
+  // Всегда показываем текущий username из me (не из поля)
+  document.getElementById('prun').value=me.username||'';
   renderAV(document.getElementById('profav'),me.id,me.avatar||'👤');
-  document.getElementById('proferr').classList.remove('show');newProfImg=null;openMo('profmo');
+  document.getElementById('proferr').classList.remove('show');
+  newProfImg=null;
+  openMo('profmo');
 }
 function handleProfAv(e){const f=e.target.files[0];if(!f)return;if(f.size>5242880){toast('Макс. 5MB');return;}const r=new FileReader();r.onload=ev=>{newProfImg=ev.target.result;document.getElementById('profav').innerHTML=`<img class="avimg" src="${newProfImg}">`;};r.readAsDataURL(f);}
 async function saveProf(){
-  const name=document.getElementById('prname').value.trim(),username=document.getElementById('prun').value.trim().replace(/^@/,'').toLowerCase()||null;
+  const name=document.getElementById('prname').value.trim();
+  const unRaw=document.getElementById('prun').value.trim().replace(/^@/,'').toLowerCase().replace(/[^a-z0-9_]/g,'');
   if(!name||name.length<2){document.getElementById('proferr').textContent='Имя минимум 2 символа';document.getElementById('proferr').classList.add('show');return;}
+  if(unRaw&&unRaw.length<3){document.getElementById('proferr').textContent='Username минимум 3 символа';document.getElementById('proferr').classList.add('show');return;}
   try{
-    const body={name,username};if(newProfImg!==null)body.avatar_img=newProfImg;
+    // Отправляем username только если поле заполнено
+    // Если поле пустое — не передаём ключ вообще, чтобы не затереть существующий
+    const body={name};
+    if(unRaw)body.username=unRaw;
+    if(newProfImg!==null)body.avatar_img=newProfImg;
     const r=await fetch('/api/user/'+me.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const u=await r.json();if(!r.ok){document.getElementById('proferr').textContent=u.error||'Ошибка';document.getElementById('proferr').classList.add('show');return;}
-    me.name=u.name;me.username=u.username;if(newProfImg)setAV(me.id,newProfImg);
+    const u=await r.json();
+    if(!r.ok){document.getElementById('proferr').textContent=u.error||'Ошибка';document.getElementById('proferr').classList.add('show');return;}
+    me.name=u.name;me.username=u.username;
+    if(newProfImg)setAV(me.id,newProfImg);
     renderAV(document.getElementById('mav'),me.id,me.avatar||'👤');
-    document.getElementById('mname').textContent=me.name;document.getElementById('mun').textContent='@'+(me.username||me.id);
+    document.getElementById('mname').textContent=me.name;
+    document.getElementById('mun').textContent='@'+(me.username||me.id);
     closeMo('profmo');newProfImg=null;toast('✓ Профиль обновлён');
   }catch{toast('Ошибка соединения');}
 }
